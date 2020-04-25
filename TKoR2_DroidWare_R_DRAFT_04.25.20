@@ -1,0 +1,608 @@
+/*--------------------------------------------------------------------------------------------------------------*/
+/*------------------------------------------- --------------------------------------------------------------------
+ */
+
+/*-------------------------------------------TKoR2 DroidWare------------------------------------------------------ 
+ * Original code by: KevinHolme (KH)
+ * Minor edits & comments by: HeyImMike (H.I.M.)
+ * Special thanks to Adafruit for their excellet boards and support documentation!
+ * 
+ * This is the code I am using for a one transmitter with multiple recievers controller based on adafruit 
+ * feathers. Specifically Adafruit Feather M0 RFM69HCW Packet Radio. It is a work in progress based on John Parks 
+ * remote effects trigger box: https://learn.adafruit.com/remote-effects-trigger/programing-the-remote  This is
+ * all based on adafruit hardware so use them to get all the library's setup, follow the trigger box instructions,
+ * skip the OLED and Trellis then go to the learning page for the 3.5 inch TFT. - KH
+ * 
+ * I took Kevin's base code and built on it till I had it tweaked to suit my particular needs. One of the great
+ * things about this approach is, in my humble opinion, how easy it is to get into. Adafruit does an amazing job
+ * of documenting their stuff, and provide projects like the trigger box (see the link above) which you can gain
+ * ideas from. I've tried to put in notes to explain things in the code below or updated Kevin's notes.
+ * 
+ * BTW - I've titled this TKoR2 DroidWare which is Taking Kontrol of R2 DroidWare since it really doesn't have a
+ * name yet.  The K in Kontrol is a nod to Kevin since we have this great approach to handling our droids thanks 
+ * to him! - H.I.M.
+ *----------------------------------------------------------------------------------------------------------------
+ */
+
+
+/*-------------------------------------------Includes-----------------------------------------------------------*/
+#include <SPI.h>  // Allows communication with SPI devices.  https://www.arduino.cc/en/reference/SPI
+#include <RH_RF69.h>  // For the radio chip on the Feather board.
+#include <Wire.h>  // Allows communication with I2C devices.  https://www.arduino.cc/en/reference/wire
+#include <RHReliableDatagram.h>  // For the radio chip on the Feather board.
+#include <Adafruit_PWMServoDriver.h>  // This is for the Adafruit 16-Chan 12-bit PWM/Servo Driver - I2C interface
+#define  LED 13
+#include <Adafruit_GFX.h>  // This is for the charlie plex LED boards.
+#include <Adafruit_IS31FL3731.h>  // This is for the charlie plex LED boards.
+
+
+/*-------------------------------------------Time---------------------------------------------------------------*/
+unsigned long CurrentMillis         = 0;
+unsigned long PreviousDisplayMillis = 0;
+unsigned long PreviousRadioMillis   = 0;
+unsigned long PreviousLoopMillis    = 0;
+unsigned long ShowTime              = 0;
+const long    DisplayInterval       = 1000;
+const long    RadioInterval         = 250; 
+const long    LoopInterval          = 100;
+
+
+/*-------------------------------------------Radio Setup--------------------------------------------------------*/
+#define RF69_FREQ   919.0
+#define RFM69_CS    8
+#define RFM69_INT   3
+#define RFM69_RST   4
+#define MY_ADDRESS  8     // Each reciever is assigned a different number, so change this for your setup.
+
+struct dataStruct{        // The data structure must be the same as the one defined in the transmitter.
+  byte n1;
+  byte n2;
+  byte n3;
+} RadioPacket;
+
+byte buf[sizeof(RadioPacket)] = {0};
+
+// Singleton instance of the radio driver
+RH_RF69 rf69(RFM69_CS, RFM69_INT);
+
+// Class to manage message delivery and receipt, using the driver declared above.
+RHReliableDatagram rf69_manager(rf69, MY_ADDRESS);  
+
+// This is for the LedSwirl
+Adafruit_IS31FL3731_Wing ledmatrix = Adafruit_IS31FL3731_Wing();
+
+/*-------------------------------------------Adafruit 16-channel PWM & Servo Driver Setup-------------------------
+ * The Adafruit 16-channel PWM & Servo driver can be used individually or in a chain. When setting up the board,
+ * you use the Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(); line for just one board.  If you're going
+ * to use more than one, you'll need to address each of the boards and then adjust your naming convention like
+ * this:
+ * Adafruit_PWMServoDriver pwm1 = Adafruit_PWMServoDriver(0x40);
+ * Adafruit_PWMServoDriver pwm2 = Adafruit_PWMServoDriver(0x41);
+ * 
+ * You can also call it with a different address and I2C interface as follows:
+ * Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(&Wire, 0x40);
+ * 
+ * Depending on your servo make, the pulse width min and max may vary.  You'll want these to be as small/large as
+ * possible without hitting the hard stop for max range.  You'll have to tweak them as necessary to match the
+ * servos you have!
+ * 
+ * You can get more info on the Adafruit 16-channel PWM & Servo Drive at:
+ * https://learn.adafruit.com/16-channel-pwm-servo-driver/chaining-drivers
+ */
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+#define SERVOMIN  150  // This is the 'minimum' pulse length count (out of 4096)
+#define SERVOMAX  600  // This is the 'maxiumu' pulse length count (out of 4096)
+
+// uint8_t servonum = 0;  // This is the servo # counter.  May not need this since we would be counting...
+
+
+/*-------------------------------------------Constants (Never Change)---------------------------------------------
+ * Part of Kevin's code that I'm not using right now.
+ */ 
+#define PeriDown         5
+#define PeriMid          6
+#define PeriUp           9
+#define SpkrDown        10
+#define SpkrMid         11
+#define SpkrUp          12
+#define SaberDown       16
+#define SaberMid        17
+#define SaberUp         18
+#define PeriPow         19
+#define SpkrPow         14
+#define SaberPow        15
+#define Relay4           1
+
+#define PANELCOUNT      16
+#define I2CADDRESS       6
+#define SERVOI2CADDRESS 0x44
+
+const int Pie1  =  0; // Light Saber Launcher port
+const int Pie2  =  1; // Life Form Scanner (LFS)
+const int Pie5  =  2; // Bad motivator
+const int Pie6  =  3; // Zapper port
+const int Pan1  =  4; // This is the pannel just to the right of the front holo projector.
+const int Pan2  =  5;
+const int Pan3  =  6;
+const int Pan4  =  7;
+// Pannel 5 is the Magic Pannel.
+// Pannel 6 is the small pannel above the Magic Panel.
+const int Pan7  =  8;
+// Pannel 8 is the rear Process State Indicator (PSI).
+// Between pannels 8 & 9 is the rear holo projector.
+// Pannel 9 is the larger Logic Display.
+const int Pan10 =  9;
+const int Pan11 = 10;
+// Pannel 12 is the small Logic Displays.
+const int Pan13 = 11;
+// To the right of pannel 13 is the front PSI.
+// To the right of the front PSI is the front holo projector.
+const int TBD1  = 12;
+const int TBD2  = 13;
+const int TBD3  = 14;
+const int TBD4  = 15;
+
+const int Pie1C  = 150; // These numbers are just guesses and will need to be set once the panel is in the dome.
+const int Pie1O  = 600; // C = Closed, O = Open, M = Midway
+const int Pie1M  = 375;
+const int Pie2C  = 150;
+const int Pie2O  = 600;
+const int Pie2M  = 375;
+const int Pie5C  = 150;
+const int Pie5O  = 600;
+const int Pie5M  = 375;
+const int Pie6C  = 150;
+const int Pie6O  = 600;
+const int Pie6M  = 375;
+const int Pan1C  = 150;
+const int Pan1O  = 600;
+const int Pan1M  = 375;
+const int Pan2C  = 150;
+const int Pan2O  = 600;
+const int Pan2M  = 375;
+const int Pan3C  = 150;
+const int Pan3O  = 600;
+const int Pan3M  = 375;
+const int Pan4C  = 150;
+const int Pan4O  = 600;
+const int Pan4M  = 375;
+const int Pan7C  = 150;
+const int Pan7O  = 600;
+const int Pan7M  = 375;
+const int Pan10C = 150;
+const int Pan10O = 600;
+const int Pan10M = 375;
+const int Pan11C = 150;
+const int Pan11O = 600;
+const int Pan11M = 375;
+const int Pan13C = 150;
+const int Pan13O = 600;
+const int Pan13M = 375;
+// const int TBD1  =  ;  // Since the To Be Determined (TBD) haven't been defined, you don't need these yet.
+// const int TBD2  =  ;
+// const int TBD3  =  ;
+// const int TBD4  =  ;
+
+uint8_t sweep[] = {1, 2, 3, 4, 6, 8, 10, 15, 20, 30, 40, 60, 60, 40, 30, 20, 15, 10, 8, 6, 4, 3, 2, 1};
+
+
+/*-------------------------------------------Variables (Will Change)--------------------------------------------*/
+String  Recieved;
+String  Incoming1;
+String  Incoming2;
+String  Incoming3;
+//String Incoming4;
+//String Incoming5;
+String  IncomingMsg;
+int     IncomingInt;
+int     LastNum;
+int     CurrentNumber;
+int     CurrentShow;
+int     Num3Int;
+int     CPUOut = 0;
+int     CPUWorking = 0;
+int     ZapOut = 0;
+int     CurrentOrder = 0;
+int     IncomingHist = 0; 
+int     Show = 0;
+int     RecInt;
+int     GroupInt;
+int     SendPackInt;
+
+//String SendPack;
+//String Pack1;
+//String Pack2;
+//String Pack3;
+//String Pack4;
+//String Pack5;
+
+
+/*-------------------------------------------Setup--------------------------------------------------------------*/
+void setup() {
+  delay(500);
+  Serial.begin(115200);
+  pinMode(8, INPUT_PULLUP);
+  // Serial.println("8 channel servo test!");
+
+  // Set all the pins as output.
+  pinMode( PeriPow, OUTPUT);
+  pinMode( SpkrPow, OUTPUT );
+  pinMode( SaberPow, OUTPUT );
+  pinMode( Relay4, OUTPUT );
+  pinMode( PeriDown, OUTPUT );
+  pinMode( PeriMid, OUTPUT );
+  pinMode( PeriUp, OUTPUT );
+  pinMode( SpkrDown, OUTPUT );
+  pinMode( SpkrMid, OUTPUT );
+  pinMode( SpkrUp, OUTPUT );
+  pinMode( SaberDown, OUTPUT );
+  pinMode( SaberMid, OUTPUT );
+  pinMode( SaberUp, OUTPUT );
+  
+  // The lifters as well as the relay board is ground the pins to trigger, so all of the pins need to be set high
+  digitalWrite(PeriPow,HIGH);
+  digitalWrite(SpkrPow,HIGH);
+  digitalWrite(SaberPow,HIGH);
+  digitalWrite(Relay4,HIGH);
+  digitalWrite(PeriDown,HIGH);
+  digitalWrite(PeriMid,HIGH);
+  digitalWrite(PeriUp,HIGH);
+  digitalWrite(SpkrDown,HIGH);
+  digitalWrite(SpkrMid,HIGH);
+  digitalWrite(SpkrUp,HIGH);
+  digitalWrite(SaberDown,HIGH);
+  digitalWrite(SaberMid,HIGH);
+  digitalWrite(SaberUp,HIGH);
+
+  // Radio
+  pinMode(RFM69_RST, OUTPUT);
+  digitalWrite(RFM69_RST, LOW);
+  Serial.println("Feather RFM69 RX/TX Test!");
+  // manual reset
+  digitalWrite(RFM69_RST, HIGH);
+  delay(10);
+  digitalWrite(RFM69_RST, LOW);
+  delay(10);
+  
+  if (!rf69.init()) {
+    Serial.println("RFM69 radio init failed");
+    while (1);
+    }
+  Serial.println("RFM69 radio init OK!");
+
+  if (!rf69.setFrequency(RF69_FREQ)) {
+    Serial.println("setFrequency failed");
+  }
+
+  // If you are using a high power RF69 eg RFM69HW, you *must* set a Tx power with the
+  // ishighpowermodule flag set like this:
+  rf69.setTxPower(20, true);
+
+  // The encryption key has to be the same as the one in the server
+  uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+  rf69.setEncryptionKey(key);
+  
+  // pinMode(LED, OUTPUT);
+
+  Serial.print("RFM69 radio @");  Serial.print((int)RF69_FREQ);  Serial.println(" MHz");
+
+  RadioPacket.n1 = 0;
+  RadioPacket.n2 = 0;
+  RadioPacket.n3 = 0;
+
+  delay(500);
+
+  pwm.begin();        // If you're using multiple board, you'll do pwm1.begin(); pwm2.begin();
+  pwm.setPWMFreq(60); // Analog servos run at ~60 Hz updates.  For multiples also add in the pwm1
+  delay(10);
+} // End of setup.
+
+
+/*------------------------------------------- --------------------------------------------------------------------
+ */
+/*-------------------------------------------Swirl----------------------------------------------------------------
+ */
+void LedSwirl() {
+  if(millis() - ShowTime <= 85000) {
+    Serial.print("LED Swirl");
+    for (uint8_t incr = 0; incr < 24; incr++)
+    for (uint8_t x = 0; x < 16; x++)
+    for (uint8_t y = 0; y < 9; y++)
+    ledmatrix.drawPixel(x, y, sweep[(x+y+incr)%24]);
+  delay(20);
+  }
+  if (millis() - ShowTime >= 95000) { // and after another 5 seconds  change the show to 0
+    Show = 0;
+  }  
+}
+
+
+
+
+
+//=====================================================Rocket Man===========================
+// this is a show that is set to Elton Johns Rocket man,  the song plays, and the booster rockets
+// deplay whenever he sings rocket man.  this unit however just has one job. 
+void RocketMan(){
+  if (millis() - ShowTime <= 85000) {// when the show was triggered, the show timer was reset to 0 . 
+                                   // This line is saying, If the time is less than 85000 milliseconds,
+                                   //Put up the speaker lifter.  also notice I repeat that command, With shows 
+    Serial.print(" Speaker Up ");
+    digitalWrite(SpkrDown,HIGH);
+    digitalWrite(SpkrMid,HIGH);
+    digitalWrite(SpkrPow, LOW);
+    delay(100);
+    digitalWrite(SpkrUp, LOW);
+    delay(100);
+    digitalWrite(SpkrUp, LOW);
+  
+  }
+  if (millis() - ShowTime >= 85000) {  // once the time gets past 85000 milliseconds  it is time to put down the 
+                                     // speaker.
+    digitalWrite(SpkrMid,HIGH);
+    digitalWrite(SpkrUp,HIGH);
+    digitalWrite(SpkrPow, LOW);
+    digitalWrite(SpkrDown,LOW);
+    delay(100);
+    digitalWrite(SpkrDown, LOW);
+  }
+  if (millis() - ShowTime >= 90000) {  // after another 5 seconds, power it all down
+    digitalWrite(SpkrDown, HIGH); 
+    digitalWrite(PeriDown, HIGH); 
+    digitalWrite(PeriPow, HIGH);
+    digitalWrite(SpkrPow, HIGH);
+  }
+  if (millis() - ShowTime >= 95000) { // and after another 5 seconds  change the show to 0
+    Show = 0;
+  }  
+}
+//=====================================================Fav Things===========================
+void FavThings(){
+if (millis() - ShowTime <= 35000) {
+ Serial.print(" Speaker Up ");
+      digitalWrite(SpkrDown,HIGH);
+      digitalWrite(SpkrMid,HIGH);
+      digitalWrite(SpkrUp,HIGH);
+      digitalWrite(SpkrPow, LOW);
+      delay (100);
+      digitalWrite(SpkrMid, LOW);
+      delay (100);
+      digitalWrite(SpkrMid, LOW);
+  
+}     
+if (millis() - ShowTime >= 35000) {
+ 
+       
+       digitalWrite(SpkrMid,HIGH);
+       digitalWrite(SpkrUp,HIGH);
+       digitalWrite(SpkrPow, LOW);
+       digitalWrite(SpkrDown,LOW);
+       delay (100);
+       digitalWrite(SpkrDown, LOW);
+}
+if (millis() - ShowTime >= 40000) {
+      digitalWrite(SpkrDown, HIGH); 
+      digitalWrite(PeriDown, HIGH); 
+      digitalWrite(PeriPow, HIGH);
+      digitalWrite(SpkrPow, HIGH);
+}
+if (millis() - ShowTime >= 41000) {
+Show = 0;
+}  
+      
+}
+//===================================================Run Shows===========================
+// This extra step with the default of 0. assures that the show will not play over and over.
+void RunShows(){
+  //Serial.print (" Run Shows" );
+  switch (Show) {
+
+    case 71:
+    RocketMan();
+    break;
+
+    case 75:
+    FavThings();
+    break;
+
+    case 104:
+    LedSwirl();
+    break;
+    
+    default:
+    case 0:  // No Show Now
+    Show = 0;
+  }
+}
+
+//=================================================================Apply Incoming============
+void ApplyIncoming(){
+  CurrentOrder = IncomingInt;
+  switch(CurrentOrder){
+    case 61:
+    Serial.print(" Periscope Up ");
+    digitalWrite(PeriDown,HIGH);
+    digitalWrite(PeriMid,HIGH);
+    digitalWrite(PeriPow, LOW);
+    digitalWrite(PeriUp, LOW);
+    break;
+
+    case 65:
+    Serial.print(" Periscope Down ");
+    digitalWrite(PeriMid,HIGH);
+    digitalWrite(PeriUp,HIGH);
+    digitalWrite(PeriPow, LOW);
+    digitalWrite(PeriDown, LOW);
+    break;
+
+    case 62:
+    Serial.print(" Periscope Random ");
+    digitalWrite(PeriDown,HIGH);
+    digitalWrite(PeriUp,HIGH);
+    digitalWrite(PeriPow, LOW);
+    digitalWrite(PeriMid, LOW);
+    break;
+
+    case 63:
+    Serial.print(" Speaker Up ");
+    digitalWrite(SpkrDown,HIGH);
+    digitalWrite(SpkrMid,HIGH);
+    digitalWrite(SpkrPow, LOW);
+    digitalWrite(SpkrUp, LOW);
+    break;
+  
+    case 67:
+    Serial.print(" Speaker Down ");
+    digitalWrite(SpkrMid,HIGH);
+    digitalWrite(SpkrUp,HIGH);
+    digitalWrite(SpkrPow, LOW);
+    digitalWrite(SpkrDown, LOW);
+    break;
+
+    case 64:
+    Serial.print(" Saber Up ");
+    digitalWrite(SaberDown,HIGH);
+    digitalWrite(SaberMid,HIGH);
+    digitalWrite(SaberPow, LOW);
+    digitalWrite(SaberUp, LOW);
+    break;
+
+    case 68:
+    Serial.print(" Saber Down ");
+    digitalWrite(SaberMid,HIGH);
+    digitalWrite(SaberUp,HIGH);
+    digitalWrite(SaberPow, LOW);
+    digitalWrite(SaberDown, LOW);
+    break;
+
+    case 71:
+    ShowTime = millis();
+    Show = 71;
+    break;
+
+    case 104:
+    ShowTime = millis();
+    Show = 104;
+    break;
+    
+    case 75:
+    ShowTime = millis();
+    Show = 75;
+    break;
+
+    case 101:
+    Serial.print(" Saber Up ");
+    pwm.setPWM(0, 0, Pie1O);
+    break;
+
+    case 107:
+    pwm.setPWM(2, 0, Pie5O);
+    break;
+
+    case 102:
+    pwm.setPWM(0, 0, Pie1M);
+    break;
+
+    case 105:
+    pwm.setPWM(1, 0, Pie2M);
+    break;
+
+    case 106:
+    pwm.setPWM(2, 0, Pie5M);
+    break;
+
+    case 103:
+    pwm.setPWM(0, 0, Pie1C);
+    break;
+
+    case 108:
+    pwm.setPWM(1, 0, Pie2C);
+    break;
+
+  }
+}
+
+
+//-------------------------------------------------Radio-------------------------------
+void radio (){
+  
+  uint8_t buf[sizeof(RadioPacket)];
+  uint8_t from;
+  uint8_t len = sizeof(buf);
+
+
+  if (rf69_manager.available()){  // Wait for a message addressed to us from the client
+    if (rf69_manager.recvfrom(buf, &len, &from)){
+      memcpy(&RadioPacket, buf, sizeof(RadioPacket));
+      if (!len) return;
+      buf[len] = 0;
+      Incoming1 = String(RadioPacket.n1);
+      Incoming2 = String(RadioPacket.n2);
+      Incoming3 = String(RadioPacket.n3);
+      IncomingMsg = Incoming1 + Incoming2 + Incoming3;
+      IncomingInt = IncomingMsg.toInt();
+    }
+  }
+}
+
+
+//---------------------------------------------------Debug Radio
+void DebugRadio(){
+  Serial.print("RSSI: ");
+  Serial.println(rf69.lastRssi(), DEC);
+  Serial.print("Got message from unit: ");
+  Serial.print("Switch Code");
+  Serial.print(RadioPacket.n1);
+  Serial.print(RadioPacket.n2);
+  Serial.print(RadioPacket.n3);
+  Serial.print("Incoming Message   ");
+  Serial.print(IncomingMsg);  
+  Serial.print("Incoming Int   ");
+  Serial.println(IncomingInt);
+}
+
+
+/*--------------------------------------------------------------------------------------------------------------*/
+/*------------------------------------------- --------------------------------------------------------------------
+ * You can use this function if you'd like to set the pulse length in seconds, e.g., setServoPulse(0, 0.001) is a
+ * ~1 millisecond pulse width.  It's not very precise.
+ */
+void setServoPulse(uint8_t n, double pulse) {
+  double pulselength;
+  pulselength = 1000000;  // 1,000,000 us per second
+  pulselength /= 60;      // 60 Hz
+  Serial.print(pulselength); Serial.println(" us per period");
+  pulselength /= 4096;    // 12 bits of resolution
+  Serial.print(pulselength); Serial.println(" us per bit");
+  pulse *= 1000000;       // Convert to us
+  pulse /= pulselength;
+  Serial.println(pulse);
+  pwm.setPWM(n, 0, pulse);
+}
+
+
+//--------------------------------------------Loop--------------------
+void loop(){
+  CurrentMillis = millis();   // capture the latest value of millis()
+  if(IncomingInt != IncomingHist){
+    CurrentOrder = IncomingInt;
+    ApplyIncoming();
+    IncomingHist = IncomingInt;
+  }
+
+  if (millis() - PreviousDisplayMillis >= DisplayInterval){
+    PreviousDisplayMillis = CurrentMillis;
+    DebugRadio();
+  }
+
+  if (millis() - PreviousRadioMillis >= RadioInterval){
+    PreviousRadioMillis = CurrentMillis;
+    radio();
+  }
+
+  if (millis() - PreviousLoopMillis >= LoopInterval){
+    PreviousLoopMillis = CurrentMillis;
+//    RunShows();
+  }
+}  // End of loop.
