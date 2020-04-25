@@ -69,7 +69,7 @@ RH_RF69 rf69(RFM69_CS, RFM69_INT);
 RHReliableDatagram rf69_manager(rf69, MY_ADDRESS);  
 
 // This is for the LedSwirl
-Adafruit_IS31FL3731_Wing ledmatrix = Adafruit_IS31FL3731_Wing();
+Adafruit_IS31FL3731 ledmatrix = Adafruit_IS31FL3731();
 
 /*-------------------------------------------Adafruit 16-channel PWM & Servo Driver Setup-------------------------
  * The Adafruit 16-channel PWM & Servo driver can be used individually or in a chain. When setting up the board,
@@ -301,8 +301,94 @@ void setup() {
 
 /*------------------------------------------- --------------------------------------------------------------------
  */
-/*-------------------------------------------Swirl----------------------------------------------------------------
+
+
+
+
+
+
+/*-------------------------------------------Rocket Man Show------------------------------------------------------
+ * This is a show that is set to Elton Johns Rocket man,  the song plays, and the booster rockets deplay whenever
+ * he sings rocket man.  This unit however just has one job.  When the show is triggered, the show timer is reset
+ * to 0.  The fist line after the void RocketMan(){ is saying that if the time is less than 85000 milliseconds,
+ * turn up the speaker.  Also notice that the command is repleated with shows.
+ *
+ * Once the time gets past 85000 milliseconds, the song is done and it's time to turn down the speakers.  This is
+ * where the second if statement comes in.  At 90000 milliseconds (i.e., another 5 seconds) the power is shut off.
+ *
+ * After another 5 seconds, the show is shut off.
  */
+void RocketMan(){
+  if (millis() - ShowTime <= 85000) {
+    Serial.print(" Speaker Up ");
+    digitalWrite(SpkrDown,HIGH);
+    digitalWrite(SpkrMid,HIGH);
+    digitalWrite(SpkrPow, LOW);
+    delay(100);
+    digitalWrite(SpkrUp, LOW);
+    delay(100);
+    digitalWrite(SpkrUp, LOW);
+  }
+  
+  if (millis() - ShowTime >= 85000) {
+    digitalWrite(SpkrMid,HIGH);
+    digitalWrite(SpkrUp,HIGH);
+    digitalWrite(SpkrPow, LOW);
+    digitalWrite(SpkrDown,LOW);
+    delay(100);
+    digitalWrite(SpkrDown, LOW);
+  }
+  
+  if (millis() - ShowTime >= 90000) {
+    digitalWrite(SpkrDown, HIGH); 
+    digitalWrite(PeriDown, HIGH); 
+    digitalWrite(PeriPow, HIGH);
+    digitalWrite(SpkrPow, HIGH);
+  }
+  
+  if (millis() - ShowTime >= 95000) {
+    Show = 0;
+  }  
+}
+
+
+/*-------------------------------------------Favorite Things Show-----------------------------------------------*/
+void FavThings(){
+  if (millis() - ShowTime <= 35000) {
+    Serial.print(" Speaker Up ");
+    digitalWrite(SpkrDown,HIGH);
+    digitalWrite(SpkrMid,HIGH);
+    digitalWrite(SpkrUp,HIGH);
+    digitalWrite(SpkrPow, LOW);
+    delay (100);
+    digitalWrite(SpkrMid, LOW);
+    delay (100);
+    digitalWrite(SpkrMid, LOW);
+  }     
+
+  if (millis() - ShowTime >= 35000) {
+    digitalWrite(SpkrMid,HIGH);
+    digitalWrite(SpkrUp,HIGH);
+    digitalWrite(SpkrPow, LOW);
+    digitalWrite(SpkrDown,LOW);
+    delay (100);
+    digitalWrite(SpkrDown, LOW);
+  }
+
+  if (millis() - ShowTime >= 40000) {
+    digitalWrite(SpkrDown, HIGH);
+    digitalWrite(PeriDown, HIGH);
+    digitalWrite(PeriPow, HIGH);
+    digitalWrite(SpkrPow, HIGH);
+  }
+  
+  if (millis() - ShowTime >= 41000) {
+    Show = 0;
+  }
+}
+
+
+/*-------------------------------------------Swirl Show---------------------------------------------------------*/
 void LedSwirl() {
   if(millis() - ShowTime <= 85000) {
     Serial.print("LED Swirl");
@@ -312,86 +398,13 @@ void LedSwirl() {
     ledmatrix.drawPixel(x, y, sweep[(x+y+incr)%24]);
   delay(20);
   }
-  if (millis() - ShowTime >= 95000) { // and after another 5 seconds  change the show to 0
+  
+  if (millis() - ShowTime >= 85000) { // and after another 5 seconds  change the show to 0
     Show = 0;
   }  
 }
 
 
-
-
-
-//=====================================================Rocket Man===========================
-// this is a show that is set to Elton Johns Rocket man,  the song plays, and the booster rockets
-// deplay whenever he sings rocket man.  this unit however just has one job. 
-void RocketMan(){
-  if (millis() - ShowTime <= 85000) {// when the show was triggered, the show timer was reset to 0 . 
-                                   // This line is saying, If the time is less than 85000 milliseconds,
-                                   //Put up the speaker lifter.  also notice I repeat that command, With shows 
-    Serial.print(" Speaker Up ");
-    digitalWrite(SpkrDown,HIGH);
-    digitalWrite(SpkrMid,HIGH);
-    digitalWrite(SpkrPow, LOW);
-    delay(100);
-    digitalWrite(SpkrUp, LOW);
-    delay(100);
-    digitalWrite(SpkrUp, LOW);
-  
-  }
-  if (millis() - ShowTime >= 85000) {  // once the time gets past 85000 milliseconds  it is time to put down the 
-                                     // speaker.
-    digitalWrite(SpkrMid,HIGH);
-    digitalWrite(SpkrUp,HIGH);
-    digitalWrite(SpkrPow, LOW);
-    digitalWrite(SpkrDown,LOW);
-    delay(100);
-    digitalWrite(SpkrDown, LOW);
-  }
-  if (millis() - ShowTime >= 90000) {  // after another 5 seconds, power it all down
-    digitalWrite(SpkrDown, HIGH); 
-    digitalWrite(PeriDown, HIGH); 
-    digitalWrite(PeriPow, HIGH);
-    digitalWrite(SpkrPow, HIGH);
-  }
-  if (millis() - ShowTime >= 95000) { // and after another 5 seconds  change the show to 0
-    Show = 0;
-  }  
-}
-//=====================================================Fav Things===========================
-void FavThings(){
-if (millis() - ShowTime <= 35000) {
- Serial.print(" Speaker Up ");
-      digitalWrite(SpkrDown,HIGH);
-      digitalWrite(SpkrMid,HIGH);
-      digitalWrite(SpkrUp,HIGH);
-      digitalWrite(SpkrPow, LOW);
-      delay (100);
-      digitalWrite(SpkrMid, LOW);
-      delay (100);
-      digitalWrite(SpkrMid, LOW);
-  
-}     
-if (millis() - ShowTime >= 35000) {
- 
-       
-       digitalWrite(SpkrMid,HIGH);
-       digitalWrite(SpkrUp,HIGH);
-       digitalWrite(SpkrPow, LOW);
-       digitalWrite(SpkrDown,LOW);
-       delay (100);
-       digitalWrite(SpkrDown, LOW);
-}
-if (millis() - ShowTime >= 40000) {
-      digitalWrite(SpkrDown, HIGH); 
-      digitalWrite(PeriDown, HIGH); 
-      digitalWrite(PeriPow, HIGH);
-      digitalWrite(SpkrPow, HIGH);
-}
-if (millis() - ShowTime >= 41000) {
-Show = 0;
-}  
-      
-}
 //===================================================Run Shows===========================
 // This extra step with the default of 0. assures that the show will not play over and over.
 void RunShows(){
@@ -416,7 +429,15 @@ void RunShows(){
   }
 }
 
-//=================================================================Apply Incoming============
+
+/*-------------------------------------------Apply Incoming-------------------------------------------------------
+ * This section is for the code which does actions from the individual menus on the controler screen.  If you use
+ * the selector to turn to screen 30 Lights, you'll see 8 options there which correspond to cases 31-38 that you
+ * see below.  This is great for simple things like opening a panel, or playing a specific song.
+ *
+ * Need to add an explination about more complicated actions and where to look for those.
+ */
+ 
 void ApplyIncoming(){
   CurrentOrder = IncomingInt;
   switch(CurrentOrder){
@@ -492,16 +513,15 @@ void ApplyIncoming(){
     break;
 
     case 101:
-    Serial.print(" Saber Up ");
     pwm.setPWM(0, 0, Pie1O);
-    break;
-
-    case 107:
-    pwm.setPWM(2, 0, Pie5O);
     break;
 
     case 102:
     pwm.setPWM(0, 0, Pie1M);
+    break;
+    
+    case 103:
+    pwm.setPWM(0, 0, Pie1C);
     break;
 
     case 105:
@@ -512,8 +532,8 @@ void ApplyIncoming(){
     pwm.setPWM(2, 0, Pie5M);
     break;
 
-    case 103:
-    pwm.setPWM(0, 0, Pie1C);
+    case 107:
+    pwm.setPWM(2, 0, Pie5O);
     break;
 
     case 108:
@@ -582,7 +602,11 @@ void setServoPulse(uint8_t n, double pulse) {
 }
 
 
-//--------------------------------------------Loop--------------------
+/*-------------------------------------------The Loop-------------------------------------------------------------
+ * This is the last and most important part of the code, which seems weird when you look at it and there just is
+ * not a lot of code here. This is the part of the code that runs in a constant, wait for it, loop.  As long as
+ * this is going round and round, all the other parts work.
+ */
 void loop(){
   CurrentMillis = millis();   // capture the latest value of millis()
   if(IncomingInt != IncomingHist){
@@ -603,6 +627,6 @@ void loop(){
 
   if (millis() - PreviousLoopMillis >= LoopInterval){
     PreviousLoopMillis = CurrentMillis;
-//    RunShows();
+    RunShows();
   }
 }  // End of loop.
