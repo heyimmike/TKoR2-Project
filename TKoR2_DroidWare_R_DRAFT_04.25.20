@@ -299,14 +299,6 @@ void setup() {
 } // End of setup.
 
 
-/*------------------------------------------- --------------------------------------------------------------------
- */
-
-
-
-
-
-
 /*-------------------------------------------Rocket Man Show------------------------------------------------------
  * This is a show that is set to Elton Johns Rocket man,  the song plays, and the booster rockets deplay whenever
  * he sings rocket man.  This unit however just has one job.  When the show is triggered, the show timer is reset
