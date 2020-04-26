@@ -296,6 +296,14 @@ void setup() {
   pwm.begin();        // If you're using multiple board, you'll do pwm1.begin(); pwm2.begin();
   pwm.setPWMFreq(60); // Analog servos run at ~60 Hz updates.  For multiples also add in the pwm1
   delay(10);
+  
+  Serial.println("ISSI swirl test");
+  if (! ledmatrix.begin()) {
+    Serial.println("IS31 not found");
+    while (1);
+  }
+  Serial.println("IS31 found!");
+
 } // End of setup.
 
 
