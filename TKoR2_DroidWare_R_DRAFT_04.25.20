@@ -69,7 +69,8 @@ RH_RF69 rf69(RFM69_CS, RFM69_INT);
 RHReliableDatagram rf69_manager(rf69, MY_ADDRESS);  
 
 // This is for the LedSwirl
-Adafruit_IS31FL3731 ledmatrix = Adafruit_IS31FL3731();
+Adafruit_IS31FL3731 matrix = Adafruit_IS31FL3731();
+
 
 /*-------------------------------------------Adafruit 16-channel PWM & Servo Driver Setup-------------------------
  * The Adafruit 16-channel PWM & Servo driver can be used individually or in a chain. When setting up the board,
@@ -184,6 +185,10 @@ const int Pan13M = 375;
 // const int TBD4  =  ;
 
 uint8_t sweep[] = {1, 2, 3, 4, 6, 8, 10, 15, 20, 30, 40, 60, 60, 40, 30, 20, 15, 10, 8, 6, 4, 3, 2, 1};
+static const uint8_t PROGMEM
+  smile_bmp[] = { B00111100,B01000010,B10100101,B10000001,B10100101,B10011001,B01000010,B00111100 },
+  neutral_bmp[] = { B00111100,B01000010,B10100101,B10000001,B10111101,B10000001,B01000010,B00111100 },
+  frown_bmp[] = { B00111100,B01000010,B10100101,B10000001,B10011001,B10100101,B01000010,B00111100 };
 
 
 /*-------------------------------------------Variables (Will Change)--------------------------------------------*/
@@ -298,7 +303,7 @@ void setup() {
   delay(10);
   
   Serial.println("ISSI swirl test");
-  if (! ledmatrix.begin()) {
+  if (! matrix.begin()) {
     Serial.println("IS31 not found");
     while (1);
   }
@@ -390,16 +395,72 @@ void FavThings(){
 
 /*-------------------------------------------Swirl Show---------------------------------------------------------*/
 void LedSwirl() {
-  if(millis() - ShowTime <= 85000) {
+  matrix.setRotation(0);
+  
+  if(millis() - ShowTime <= 15000) {
     Serial.print("LED Swirl");
     for (uint8_t incr = 0; incr < 24; incr++)
     for (uint8_t x = 0; x < 16; x++)
     for (uint8_t y = 0; y < 9; y++)
-    ledmatrix.drawPixel(x, y, sweep[(x+y+incr)%24]);
+    matrix.drawPixel(x, y, sweep[(x+y+incr)%24]);
   delay(20);
   }
+
+  if(millis() - ShowTime >=15000) {
+    matrix.setRotation(0);
+
+    matrix.clear();
+    matrix.drawBitmap(3, 0, smile_bmp, 8, 8, 255);
+    delay(500);
   
-  if (millis() - ShowTime >= 85000) { // and after another 5 seconds  change the show to 0
+    matrix.clear();
+    matrix.drawBitmap(3, 0, neutral_bmp, 8, 8, 64);
+    delay(500);
+
+    matrix.clear();
+    matrix.drawBitmap(3, 0, frown_bmp, 8, 8, 32);
+    delay(500);
+
+    matrix.clear();
+    matrix.drawPixel(0, 0, 255);  
+    delay(500);
+
+    matrix.clear();
+    matrix.drawLine(0,0, matrix.width()-1, matrix.height()-1, 127);
+    delay(500);
+
+    matrix.clear();
+    matrix.drawRect(0,0, matrix.width(), matrix.height(), 255);
+    matrix.fillRect(2,2, matrix.width()-4, matrix.height()-4, 20);
+    delay(500);
+
+    matrix.clear();
+    matrix.drawCircle(8,4, 4, 64);
+    matrix.drawCircle(8,4, 2, 32);
+    delay(500);
+
+    matrix.setTextSize(1);
+    matrix.setTextWrap(false);  // we dont want text to wrap so it scrolls nicely
+    matrix.setTextColor(100);
+    for (int8_t x=0; x>=-32; x--) {
+      matrix.clear();
+      matrix.setCursor(x,0);
+      matrix.print("Hello");
+      delay(100);
+    }
+
+    matrix.setTextSize(2);
+    matrix.setTextWrap(false);  // we dont want text to wrap so it scrolls nicely
+    matrix.setTextColor(32);
+    matrix.setRotation(1);
+    for (int8_t x=7; x>=-64; x--) {
+      matrix.clear();
+      matrix.setCursor(x,0);
+      matrix.print("World");
+      delay(100);
+    }
+  
+    matrix.clear();
     Show = 0;
   }  
 }
@@ -630,3 +691,10 @@ void loop(){
     RunShows();
   }
 }  // End of loop.
+
+
+/*-------------------------------------------Foot Note------------------------------------------------------------
+ * I explained that the K in the TKoR2 DroidWare was a nod to KevinHolme, cause he's awesome! What I failed to
+ * explain was the capitol W in the DroidWare.  That's a nod to Rhyno45, cause Bryan is a Wanker! Don't ask me why
+ * because I honestly don't know, just that it has to go at the end of your code as a good luck charm!
+ */
