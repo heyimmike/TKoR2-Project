@@ -31,9 +31,20 @@
 #include <Wire.h>  // Allows communication with I2C devices.  https://www.arduino.cc/en/reference/wire
 #include <RHReliableDatagram.h>  // For the radio chip on the Feather board.
 #include <Adafruit_PWMServoDriver.h>  // This is for the Adafruit 16-Chan 12-bit PWM/Servo Driver - I2C interface
-#define  LED 13
 #include <Adafruit_GFX.h>  // This is for the charlie plex LED boards.
 #include <Adafruit_IS31FL3731.h>  // This is for the charlie plex LED boards.
+#include <EasyTransfer.h>  // Protocol for using serial data transfer.
+#define  LED 13
+
+
+/*-------------------------------------------Easy Transfer--------------------------------------------------------
+ * This is required for the Easy Transfer protocol to work between boards. You put your variable definitions here
+ * for any data you want to send between boards.  It has to be the same on both boards in order for them to talk.
+ */
+EasyTransfer ET;
+struct SEND_DATA_STRUCTURE {
+  int16_t data1;
+}
 
 
 /*-------------------------------------------Time---------------------------------------------------------------*/
@@ -45,6 +56,24 @@ unsigned long ShowTime              = 0;
 const long    DisplayInterval       = 1000;
 const long    RadioInterval         = 250; 
 const long    LoopInterval          = 100;
+
+unsigned long PreviousReadMillis = 0;
+unsigned long PreviousSendMillis = 0;
+unsigned long PreviousShowTimeMillis = 0;
+unsigned long PreviousHistoryMillis = 0;
+unsigned long PreviousCheckMillis = 0;
+unsigned long PreviousStanceMillis = 0;
+unsigned long PreviousMoveMillis = 0;
+unsigned long PreviousShowMillis = 0;
+unsigned long ShowTime = 1;
+const long ReadInterval = 50;
+const long SendInterval = 250; 
+const long ResetHistoryInterval = 250;
+const long CheckInterval = 500; 
+const long StanceInterval = 100; 
+const long MoveInterval = 75;
+const long ShowInterval = 75; 
+const long ShowTimeInterval = 100;
 
 
 /*-------------------------------------------Radio Setup--------------------------------------------------------*/
@@ -68,8 +97,9 @@ RH_RF69 rf69(RFM69_CS, RFM69_INT);
 // Class to manage message delivery and receipt, using the driver declared above.
 RHReliableDatagram rf69_manager(rf69, MY_ADDRESS);  
 
-// This is for the LedSwirl
-Adafruit_IS31FL3731 matrix = Adafruit_IS31FL3731();
+
+/*-------------------------------------------LED Swirl----------------------------------------------------------*/
+Adafruit_IS31FL3731 matrix = Adafruit_IS31FL3731();  // This is for the LedSwirl.
 
 
 /*-------------------------------------------Adafruit 16-channel PWM & Servo Driver Setup-------------------------
@@ -94,12 +124,14 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVOMIN  150  // This is the 'minimum' pulse length count (out of 4096)
 #define SERVOMAX  600  // This is the 'maxiumu' pulse length count (out of 4096)
 
-// uint8_t servonum = 0;  // This is the servo # counter.  May not need this since we would be counting...
+// uint8_t servonum = 0;  // This is the servo # counter.  May not need this since we wouldn't be counting...
 
 
 /*-------------------------------------------Constants (Never Change)---------------------------------------------
- * Part of Kevin's code that I'm not using right now.
+ * These are all the constants that Kevin predefined for his specific setup.  Contstants do not change.
  */ 
+#define ResetPin        40
+
 #define PeriDown         5
 #define PeriMid          6
 #define PeriUp           9
@@ -191,7 +223,9 @@ static const uint8_t PROGMEM
   frown_bmp[] = { B00111100,B01000010,B10100101,B10000001,B10011001,B10100101,B01000010,B00111100 };
 
 
-/*-------------------------------------------Variables (Will Change)--------------------------------------------*/
+/*-------------------------------------------Variables (Will Change)----------------------------------------------
+ * These are items whose values will change.
+ */
 String  Recieved;
 String  Incoming1;
 String  Incoming2;
@@ -214,20 +248,30 @@ int     RecInt;
 int     GroupInt;
 int     SendPackInt;
 
-//String SendPack;
-//String Pack1;
-//String Pack2;
-//String Pack3;
+String SendPack;
+String Pack1;
+String Pack2;
+String Pack3;
 //String Pack4;
 //String Pack5;
 
 
-/*-------------------------------------------Setup--------------------------------------------------------------*/
+/*-------------------------------------------Setup----------------------------------------------------------------
+ * Setup is the startup code that is run once before the Loop takes over.
+ */
 void setup() {
   delay(500);
   Serial.begin(115200);
+  Serial.begin(115200);
   pinMode(8, INPUT_PULLUP);
+  pinMode(LED, OUTPUT);
   // Serial.println("8 channel servo test!");
+
+  ET.begin(details(mydata), &Serial1);
+  pinMode(13, OUTPUT);
+  pinMode(ResetPin, OUTPUT);
+  digitalWrite(ResetPin, HIGH);  // Reset Sound
+  randomSeed(analogRead(0));
 
   // Set all the pins as output.
   pinMode( PeriPow, OUTPUT);
@@ -259,47 +303,45 @@ void setup() {
   digitalWrite(SaberMid,HIGH);
   digitalWrite(SaberUp,HIGH);
 
-  // Radio
+  // RADIO -------------------------------------------------------------------------------------------------------
   pinMode(RFM69_RST, OUTPUT);
   digitalWrite(RFM69_RST, LOW);
   Serial.println("Feather RFM69 RX/TX Test!");
+
   // manual reset
   digitalWrite(RFM69_RST, HIGH);
   delay(10);
   digitalWrite(RFM69_RST, LOW);
   delay(10);
-  
+
   if (!rf69.init()) {
     Serial.println("RFM69 radio init failed");
     while (1);
-    }
+  }
   Serial.println("RFM69 radio init OK!");
 
   if (!rf69.setFrequency(RF69_FREQ)) {
     Serial.println("setFrequency failed");
   }
 
-  // If you are using a high power RF69 eg RFM69HW, you *must* set a Tx power with the
-  // ishighpowermodule flag set like this:
+  // If you are using a high power RF69 eg RFM69HW, you *must* set a Tx power with the ishighpowermodule flag set
+  // like this:
   rf69.setTxPower(20, true);
 
   // The encryption key has to be the same as the one in the server
   uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
   rf69.setEncryptionKey(key);
-  
-  // pinMode(LED, OUTPUT);
 
   Serial.print("RFM69 radio @");  Serial.print((int)RF69_FREQ);  Serial.println(" MHz");
-
   RadioPacket.n1 = 0;
   RadioPacket.n2 = 0;
   RadioPacket.n3 = 0;
 
   delay(500);
 
-  pwm.begin();        // If you're using multiple board, you'll do pwm1.begin(); pwm2.begin();
-  pwm.setPWMFreq(60); // Analog servos run at ~60 Hz updates.  For multiples also add in the pwm1
+  pwm.begin();  // If you're using multiple board, you'll do pwm1.begin(); pwm2.begin();
+  pwm.setPWMFreq(60);  // Analog servos run at ~60 Hz updates.  For multiples also add in the pwm1
   delay(10);
   
   Serial.println("ISSI swirl test");
@@ -308,8 +350,21 @@ void setup() {
     while (1);
   }
   Serial.println("IS31 found!");
-
 } // End of setup.
+
+
+/*-------------------------------------------Reset Sound--------------------------------------------------------*/
+void ResetSound() {
+  if((ShowTime >= 00) && (ShowTime <= 90)); {
+    digitalWrite(ResetPin, LOW);  // Reset Sound
+    Serial.print("Reset in show ");
+  }
+  if(ShowTime >= 91); {
+    digitalWrite(ResetPin, HIGH);  // Reset Sound
+    Show = 0;
+    RunShow();
+  }
+}
 
 
 /*-------------------------------------------Rocket Man Show------------------------------------------------------
@@ -403,42 +458,34 @@ void LedSwirl() {
     for (uint8_t x = 0; x < 16; x++)
     for (uint8_t y = 0; y < 9; y++)
     matrix.drawPixel(x, y, sweep[(x+y+incr)%24]);
-  delay(20);
+    delay(20);
   }
 
   if(millis() - ShowTime >=15000) {
     matrix.setRotation(0);
-
     matrix.clear();
     matrix.drawBitmap(3, 0, smile_bmp, 8, 8, 255);
     delay(500);
-  
     matrix.clear();
     matrix.drawBitmap(3, 0, neutral_bmp, 8, 8, 64);
     delay(500);
-
     matrix.clear();
     matrix.drawBitmap(3, 0, frown_bmp, 8, 8, 32);
     delay(500);
-
     matrix.clear();
     matrix.drawPixel(0, 0, 255);  
     delay(500);
-
     matrix.clear();
     matrix.drawLine(0,0, matrix.width()-1, matrix.height()-1, 127);
     delay(500);
-
     matrix.clear();
     matrix.drawRect(0,0, matrix.width(), matrix.height(), 255);
     matrix.fillRect(2,2, matrix.width()-4, matrix.height()-4, 20);
     delay(500);
-
     matrix.clear();
     matrix.drawCircle(8,4, 4, 64);
     matrix.drawCircle(8,4, 2, 32);
     delay(500);
-
     matrix.setTextSize(1);
     matrix.setTextWrap(false);  // we dont want text to wrap so it scrolls nicely
     matrix.setTextColor(100);
@@ -448,7 +495,6 @@ void LedSwirl() {
       matrix.print("Hello");
       delay(100);
     }
-
     matrix.setTextSize(2);
     matrix.setTextWrap(false);  // we dont want text to wrap so it scrolls nicely
     matrix.setTextColor(32);
@@ -459,19 +505,19 @@ void LedSwirl() {
       matrix.print("World");
       delay(100);
     }
-  
     matrix.clear();
     Show = 0;
   }  
 }
 
 
-//===================================================Run Shows===========================
-// This extra step with the default of 0. assures that the show will not play over and over.
+/*-------------------------------------------Run Shows------------------------------------------------------------
+ * This is an extra step for running the shows that ensures that any given show will not play over and over.  With
+ * the default is set to 0 which is what prevents replaying.
+ */
 void RunShows(){
   //Serial.print (" Run Shows" );
   switch (Show) {
-
     case 71:
     RocketMan();
     break;
@@ -484,9 +530,14 @@ void RunShows(){
     LedSwirl();
     break;
     
+    case128:
+    ResetSound();
+    break;
+    
     default:
     case 0:  // No Show Now
     Show = 0;
+    break;
   }
 }
 
@@ -600,21 +651,34 @@ void ApplyIncoming(){
     case 108:
     pwm.setPWM(1, 0, Pie2C);
     break;
-
+    
+    case 128:  // Reset Sound
+    Show = 128;
+    RunShows();
+    break;
   }
 }
 
 
-//-------------------------------------------------Radio-------------------------------
+/*-------------------------------------------We Got One-----------------------------------------------------------
+ */
+void WeGotOne() {
+// if(LastNum != IncomingInt) {
+  Serial.println("WE GOT ONE");
+  CurrentNumber = IncomingInt;
+  ShowTime = 0;
+  LastNum = CurrentNumber;
+  ApplyIncoming();
+}
+
+
+/*-------------------------------------------Radio--------------------------------------------------------------*/
 void radio (){
-  
   uint8_t buf[sizeof(RadioPacket)];
   uint8_t from;
   uint8_t len = sizeof(buf);
-
-
-  if (rf69_manager.available()){  // Wait for a message addressed to us from the client
-    if (rf69_manager.recvfrom(buf, &len, &from)){
+  if (rf69_manager.available()) {  // Wait for a message addressed to us from the client
+    if (rf69_manager.recvfrom(buf, &len, &from)) {
       memcpy(&RadioPacket, buf, sizeof(RadioPacket));
       if (!len) return;
       buf[len] = 0;
@@ -623,13 +687,19 @@ void radio (){
       Incoming3 = String(RadioPacket.n3);
       IncomingMsg = Incoming1 + Incoming2 + Incoming3;
       IncomingInt = IncomingMsg.toInt();
+      Num3Int = Incoming3.toInt();
+      //Serial.print("Incoming3: ");
+      //Serial.println(Incoming3);
+      if (1 <= Num3Int && Num3Int <=8){
+        WeGotOne();
+      }
     }
   }
 }
 
 
-//---------------------------------------------------Debug Radio
-void DebugRadio(){
+/*-------------------------------------------Debug Radio--------------------------------------------------------*/
+void DebugRadio() {
   Serial.print("RSSI: ");
   Serial.println(rf69.lastRssi(), DEC);
   Serial.print("Got message from unit: ");
@@ -644,7 +714,11 @@ void DebugRadio(){
 }
 
 
-/*--------------------------------------------------------------------------------------------------------------*/
+/*-------------------------------------------Debug--------------------------------------------------------------*/
+void Debug() {
+}
+
+
 /*------------------------------------------- --------------------------------------------------------------------
  * You can use this function if you'd like to set the pulse length in seconds, e.g., setServoPulse(0, 0.001) is a
  * ~1 millisecond pulse width.  It's not very precise.
@@ -669,7 +743,18 @@ void setServoPulse(uint8_t n, double pulse) {
  * this is going round and round, all the other parts work.
  */
 void loop(){
+  Pack1 = Incoming1;
+  Pack2 = Incoming2;
+  Pack3 = Incoming3;
+  
+  SendPack = Pack1 + Pack2 + Pack3;
+  SendPackInt = (SendPack.toInt());
+  // This is how you access the variables.  [name of the group].[variable name]
+  mydata.data1 = SendPackInt;
+  
+  ET.sendData();
   CurrentMillis = millis();   // capture the latest value of millis()
+  
   if(IncomingInt != IncomingHist){
     CurrentOrder = IncomingInt;
     ApplyIncoming();
@@ -678,7 +763,8 @@ void loop(){
 
   if (millis() - PreviousDisplayMillis >= DisplayInterval){
     PreviousDisplayMillis = CurrentMillis;
-    DebugRadio();
+//    DebugRadio();
+  Debug();
   }
 
   if (millis() - PreviousRadioMillis >= RadioInterval){
@@ -690,6 +776,14 @@ void loop(){
     PreviousLoopMillis = CurrentMillis;
     RunShows();
   }
+  
+  if (millis() - PreviousShowTimeMillis >= ShowTimeInterval) {
+    PreviousSHowTimeMillis = CurrentMillis;
+    ShowTime++;
+//    Serial.print("ShowTime ");
+//    Serial.print(ShowTime);
+  }
+  delay(100);
 }  // End of loop.
 
 
