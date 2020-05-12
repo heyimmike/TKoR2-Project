@@ -44,7 +44,9 @@
 EasyTransfer ET;
 struct SEND_DATA_STRUCTURE {
   int16_t data1;
-}
+};
+
+SEND_DATA_STRUCTURE mydata;
 
 
 /*-------------------------------------------Time---------------------------------------------------------------*/
@@ -65,7 +67,7 @@ unsigned long PreviousCheckMillis = 0;
 unsigned long PreviousStanceMillis = 0;
 unsigned long PreviousMoveMillis = 0;
 unsigned long PreviousShowMillis = 0;
-unsigned long ShowTime = 1;
+// unsigned long ShowTime = 1;
 const long ReadInterval = 50;
 const long SendInterval = 250; 
 const long ResetHistoryInterval = 250;
@@ -262,7 +264,7 @@ String Pack3;
 void setup() {
   delay(500);
   Serial.begin(115200);
-  Serial.begin(115200);
+  Serial1.begin(115200);
   pinMode(8, INPUT_PULLUP);
   pinMode(LED, OUTPUT);
   // Serial.println("8 channel servo test!");
@@ -306,8 +308,7 @@ void setup() {
   // RADIO -------------------------------------------------------------------------------------------------------
   pinMode(RFM69_RST, OUTPUT);
   digitalWrite(RFM69_RST, LOW);
-  Serial.println("Feather RFM69 RX/TX Test!");
-
+  
   // manual reset
   digitalWrite(RFM69_RST, HIGH);
   delay(10);
@@ -344,12 +345,13 @@ void setup() {
   pwm.setPWMFreq(60);  // Analog servos run at ~60 Hz updates.  For multiples also add in the pwm1
   delay(10);
   
+  /*
   Serial.println("ISSI swirl test");
   if (! matrix.begin()) {
     Serial.println("IS31 not found");
     while (1);
   }
-  Serial.println("IS31 found!");
+  Serial.println("IS31 found!");*/
 } // End of setup.
 
 
@@ -362,7 +364,7 @@ void ResetSound() {
   if(ShowTime >= 91); {
     digitalWrite(ResetPin, HIGH);  // Reset Sound
     Show = 0;
-    RunShow();
+    RunShows();
   }
 }
 
@@ -688,8 +690,6 @@ void radio (){
       IncomingMsg = Incoming1 + Incoming2 + Incoming3;
       IncomingInt = IncomingMsg.toInt();
       Num3Int = Incoming3.toInt();
-      //Serial.print("Incoming3: ");
-      //Serial.println(Incoming3);
       if (1 <= Num3Int && Num3Int <=8){
         WeGotOne();
       }
@@ -778,7 +778,7 @@ void loop(){
   }
   
   if (millis() - PreviousShowTimeMillis >= ShowTimeInterval) {
-    PreviousSHowTimeMillis = CurrentMillis;
+    PreviousShowTimeMillis = CurrentMillis;
     ShowTime++;
 //    Serial.print("ShowTime ");
 //    Serial.print(ShowTime);
