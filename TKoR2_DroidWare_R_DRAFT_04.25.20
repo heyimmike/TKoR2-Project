@@ -84,6 +84,7 @@ const long ShowTimeInterval = 100;
 #define RFM69_INT   3
 #define RFM69_RST   4
 #define MY_ADDRESS  8     // Each reciever is assigned a different number, so change this for your setup.
+#define ResetPin    40    // Need to move this somewhere else in the code.
 
 struct dataStruct{        // The data structure must be the same as the one defined in the transmitter.
   byte n1;
@@ -263,8 +264,8 @@ String Pack3;
  */
 void setup() {
   delay(500);
-  Serial.begin(115200);
-  Serial1.begin(115200);
+  Serial.begin(9600);
+  Serial1.begin(9600);
   pinMode(8, INPUT_PULLUP);
   pinMode(LED, OUTPUT);
   // Serial.println("8 channel servo test!");
